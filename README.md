@@ -1,188 +1,52 @@
-[![Build Status](https://travis-ci.org/sitewhere/sitewhere.svg?branch=master)](https://travis-ci.org/sitewhere/sitewhere) 
-[![Docker Pulls](https://img.shields.io/docker/pulls/sitewhere/service-web-rest.svg?label=Docker%20Pulls&style=flat-square)](https://hub.docker.com/u/sitewhere) 
-
-![SiteWhere](https://s3.amazonaws.com/sitewhere-branding/SiteWhereLogo.svg)
-
----
-
-SiteWhere is an industrial strength, open source IoT Application Enablement Platform 
-which facilitates the ingestion, storage, processing, and integration of IoT device data 
-at massive scale. The platform leverages a microservices architecture which runs on top of 
-cutting-edge technologies such as [Kubernetes](https://kubernetes.io/), [Istio](https://istio.io), 
-and [Kafka](https://kafka.apache.org/) in order to scale efficiently 
-to the loads expected in large IoT projects. 
-
-SiteWhere embraces a distributed architecture which runs on Kubernetes and provides 
-both infrastructure such as highly-available databases and MQTT brokers as well as 
-microservices to facilitate various aspects of IoT project development. The platform is 
-built with a framework approach using clearly defined APIs so that new technologies may easily 
-be integrated as the IoT ecosystem evolves.
-
-![SiteWhere Administration](https://sitewhere-web.s3.amazonaws.com/github-readme/admin-ui-2.1.0.png "SiteWhere Administration")
-
-## Deployment and Orchestration
-
-SiteWhere is composed of Java-based microservices which are built as
-[Docker](https://www.docker.com/) images and deployed to Kubernetes for
-orchestration. To simplify installation and configuration, [Helm](https://helm.sh/) 
-is used to provide standard templates for various deployment scenarios. Helm
-[charts](https://github.com/sitewhere/sitewhere-recipes/tree/master/charts)
-are provided to supply both the microservices and the dependencies needed to 
-run a complete SiteWhere deployment. Infrastructure components include 
-technologies such as Apache Zookeeper and Kafka, highly available databases such
-as MongoDB, InfluxDB, and Cassandra, and other supporting technologies 
-such as MQTT brokers.
-
-## Microservices
-
-Rather than using a monolithic approach, SiteWhere is based on many microservices
-running as a distributed system. Each microservice is a completely self-contained 
-entity that has its own configuration schema, internal components, data persistence, 
-and interactions with the event processing pipeline. SiteWhere microservices
-are built on top of a custom microservice framework and run as separate
-[Spring Boot](https://projects.spring.io/spring-boot/) processes, each
-contained in its own [Docker](https://www.docker.com/) image.
-
-![SiteWhere Architecture](https://sitewhere-web.s3.amazonaws.com/github-readme/sitewhere-microservices.png "SiteWhere 2.0 Architecture")
-
-### Separation of Concerns
-
-Separating the system logic into microservices allows the interactions
-between various areas of the system to be more clearly defined. It also allows
-parts of the pipeline to be shutdown or fail gracefully without preventing other
-parts of the system from functioning. The event processing pipeline, which spans
-many of the microservices, is buffered by Kafka so that data processing has
-strong delivery guarantees while maintaining high throughput.
-
-### Scale What You Need. Leave Out What You Don't
-
-The microservice architecture allows individual functional areas of the system to be scaled
-independently or left out completely. In use cases where REST processing tends to
-be a bottleneck, multiple REST microservices can be run concurrently to handle the load.
-Conversely, services such as presence management that may not be required can be left
-out so that processing power can be dedicated to other aspects of the system.
-
-## Instance Management
-
-SiteWhere supports the concept of an _instance_, which allows the distributed system 
-to act as a cohesive unit with some aspects addressed at the global level. All of the 
-microservices for a single SiteWhere instance must be running on the same Kubernetes 
-infrastucture, though the system may be spread across tens or hundreds of machines 
-to distribute the processing load.
-
-### Service Mesh with Istio
-
-SiteWhere leverages [Istio](https://istio.io/) to provide a service mesh for
-the system microservices, allowing the platform to be scaled dynamically while 
-also providing a great deal of control over how data is routed. Istio allows
-modern methods such as canary testing and fault injection to be used to 
-provide a more robust and fault-tolerant system. It also allows for detailed
-monitoring and tracing of the data flowing through the components.
-
-### Centralized Configuration Management with Apache ZooKeeper
-
-SiteWhere configuration is stored in [Apache ZooKeeper](https://zookeeper.apache.org/) 
-to allow for a scalable, externalized approach to configuration management. ZooKeeper 
-contains a hierarchical structure which represents the configuration for one or more 
-SiteWhere instances and all of the microservices that are used to realize them. The 
-configuration is replicated for high availabilty.
-
-Each microservice has a direct connection to ZooKeeper and uses the hierarchy to 
-determine its configuration at runtime. Microservices listen for changes to the 
-configuration data and react dynamically to updates. No configuration
-is stored locally within the microservice, which prevents problems with
-keeping services in sync as system configuration is updated.
-
-### Distributed Storage with Rook.io
-
-Since many of the system components such as Zookeeper, Kafka, and various
-databases require access to persistent storage, SiteWhere uses
-[Rook.io](https://rook.io/) within Kubernetes to supply distributed,
-replicated block storage that is resilient to hardware failures while
-still offering good performance characteristics. As storage and throughput
-needs increase over time, new storage devices can be made available
-dynamically. The underlying [Ceph](https://ceph.com/) architecture
-used by Rook.io can handle _exobytes_ of data while allowing data
-to be resilient to failures at the node, rack, or even datacenter level.
-
-## High Performance Data Processing Pipeline
-
-The event processing pipeline in SiteWhere uses [Apache Kafka](https://kafka.apache.org/) 
-to provide a resilient, high-performance mechanism for progressively processing device 
-event data. Microservices can plug in to key points in the event processing pipeline, 
-reading data from well-known inbound topics, processing data, then sending data to well-known 
-outbound topics. External entites that are interested in data at any point in the pipeline 
-can act as consumers of the SiteWhere topics to use the data as it moves through the system.
-
-### Fully Asynchronous Pipeline Processing
-
-The SiteWhere event processing pipeline leverages Kafka's messaging constructs to allow
-device event data to be processed asynchronously. If a microservice shuts down and no other 
-replicas are available to process the load. The data will be queued until a replica starts
-and begins processing again. This acts as a guarantee against data loss as data is always
-backed by Kafka's high-performance storage. SiteWhere microservices leverage Kafka's consumer 
-groups concept to distribute load across multiple consumers and scale processing accordingly.
-
-Using Kafka also has other advantages that are leveraged by SiteWhere. Since all data in
-the distributed log is stored on disk, it is possible to "replay" the event stream based
-on previously gathered data. This is extremely valuable for aspects such as debugging
-processing logic or load testing the system.
-
-## API Connectivity Between Microservices
-
-While device event data generally flows in a pipeline from microservice to microservice on
-Kafka topics, there are also API operations that need to occur in real time between the
-microservices. For instance, device management and event management functions are contained in
-their own microservices, but are required by many other components of the system. Many of the
-SiteWhere microservices offer APIs which may be accessed by other microservices to
-support aspects such as storing persistent data or initiating microservice-specific
-services.
-
-### Using gRPC for a Performance Boost
-
-Rather than solely using REST services based on HTTP 1.x, which tend to have significant
-connection overhead, SiteWhere uses [gRPC](https://grpc.io/) to establish a long-lived
-connection between microservices that need to communicate with each other. Since gRPC uses
-persistent HTTP2 connections, the overhead for interactions is greatly reduced, allowing
-for decoupling without a significant performance penalty. Istio also allows the gRPC
-connections to be multiplexed across multiple replicas of a microservice to scale 
-processing and offer redundancy.
-
-The entire SiteWhere data model has been captured in
-[Google Protocol Buffers](https://developers.google.com/protocol-buffers/) format so that
-it can be used within GRPC services. All of the SiteWhere APIs are exposed directly as
-gRPC services as well, allowing for high-performance, low-latency access to all API
-functions. The REST APIs are still made available via the Web/REST microservice (acting
-as an API gateway), but they use the gRPC APIs underneath to provide a consistent approach 
-to accessing data.
-
-## Multitenancy
-
-SiteWhere is designed for large-scale IoT projects which may involve many system tenants
-sharing a single SiteWhere instance. A key differentiator for SiteWhere compared to most
-IoT platforms is that each tenant runs in isolation from other tenants. By default, tenants
-do not share database resources or pipeline processing and have a completely separate 
-configuration lifecycles. With this approach, each tenant may use its own database 
-technologies, external integrations, and other configuration options. Parts of the tenant's
-processing pipeline may be reconfigured/restarted without causing an interruption to 
-other tenants.
-
-### Data Privacy
-
-An important consequence of the way SiteWhere handles multitenancy is that each tenant's 
-data is separated from the data of other tenants. Most platforms that offer multitenancy
-store data for all tenants in shared tables, differentiated only by a tenant id. The shared
-approach opens up the possibility of one tenant's data corrupting another, which is not
-an acceptable risk in many IoT deployments. In addition, each tenant has its own processing
-pipelines, so in-flight data is never co-mingled either.
-
-Having dedicated resources for tenants can be expensive in terms of memory and processing
-resources, so SiteWhere also offers the concept of _customers_ within each tenant. Customers
-allow data to be differentiated within a tenant, but without having a separate dedicated
-database and pipelines. In cases where colocated data is acceptable, the tenant can have
-any number of customers, which shared the same database and processing pipeline. This allows 
-the best of both worlds in terms of security and scalability.
-
-* * * *
-
-Copyright (c) 2009-2019 [SiteWhere LLC](http://www.sitewhere.com). All rights reserved.
+<div class="Box-sc-g0xbh4-0 bJMeLZ js-snippet-clipboard-copy-unpositioned" data-hpc="true"><article class="markdown-body entry-content container-lg" itemprop="text"><p dir="auto"><a href="https://travis-ci.org/sitewhere/sitewhere" rel="nofollow"><img src="https://camo.githubusercontent.com/8ed42a6ec984c164aecebece0424e59a09a9128cc7129bcea7c12ffe9412c1a4/68747470733a2f2f7472617669732d63692e6f72672f7369746577686572652f7369746577686572652e7376673f6272616e63683d6d6173746572" alt="构建状态" data-canonical-src="https://travis-ci.org/sitewhere/sitewhere.svg?branch=master" style="max-width: 100%;"></a>
+<a href="https://hub.docker.com/u/sitewhere" rel="nofollow"><img src="https://camo.githubusercontent.com/a4376e7045d548130c9568c1f9404cff3d3a4142bb2e98168dfeffa5cd836650/68747470733a2f2f696d672e736869656c64732e696f2f646f636b65722f70756c6c732f7369746577686572652f736572766963652d7765622d726573742e7376673f6c6162656c3d446f636b657225323050756c6c73267374796c653d666c61742d737175617265" alt="Docker 拉取" data-canonical-src="https://img.shields.io/docker/pulls/sitewhere/service-web-rest.svg?label=Docker%20Pulls&amp;style=flat-square" style="max-width: 100%;"></a></p>
+<p dir="auto"><a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/7188445470765879ebad659dc6af7f5c73bd5f23fc5b37f245bb8a1056d85a35/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f7369746577686572652d6272616e64696e672f5369746557686572654c6f676f2e737667"><img src="https://camo.githubusercontent.com/7188445470765879ebad659dc6af7f5c73bd5f23fc5b37f245bb8a1056d85a35/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f7369746577686572652d6272616e64696e672f5369746557686572654c6f676f2e737667" alt="站点位置" data-canonical-src="https://s3.amazonaws.com/sitewhere-branding/SiteWhereLogo.svg" style="max-width: 100%;"></a></p>
+<hr>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere 是一个具有工业实力的开源物联网应用支持平台，可促进大规模物联网设备数据的摄取、存储、处理和集成。该平台利用在</font></font><a href="https://kubernetes.io/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Kubernetes</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">、</font></font><a href="https://istio.io" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Istio</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">和</font></font><a href="https://kafka.apache.org/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Kafka</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">等尖端技术之上运行的微服务架构</font><font style="vertical-align: inherit;">，以便有效地扩展到大型物联网项目中预期的负载。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere 采用在 Kubernetes 上运行的分布式架构，提供高可用数据库和 MQTT 代理等基础设施以及微服务，以促进物联网项目开发的各个方面。该平台采用明确定义的 API 的框架方法构建，以便随着物联网生态系统的发展可以轻松集成新技术。</font></font></p>
+<p dir="auto"><a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/acdc443ab14e165261e40c1310ed317f3bfac29bf7912cd650961258e44e53c6/68747470733a2f2f7369746577686572652d7765622e73332e616d617a6f6e6177732e636f6d2f6769746875622d726561646d652f61646d696e2d75692d322e312e302e706e67"><img src="https://camo.githubusercontent.com/acdc443ab14e165261e40c1310ed317f3bfac29bf7912cd650961258e44e53c6/68747470733a2f2f7369746577686572652d7765622e73332e616d617a6f6e6177732e636f6d2f6769746875622d726561646d652f61646d696e2d75692d322e312e302e706e67" alt="网站管理" title="网站管理" data-canonical-src="https://sitewhere-web.s3.amazonaws.com/github-readme/admin-ui-2.1.0.png" style="max-width: 100%;"></a></p>
+<div class="markdown-heading" dir="auto"><h2 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">部署和编排</font></font></h2><a id="user-content-deployment-and-orchestration" class="anchor" aria-label="永久链接：部署和编排" href="#deployment-and-orchestration"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere 由基于 Java 的微服务组成，这些微服务构建为
+</font></font><a href="https://www.docker.com/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Docker</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">映像并部署到 Kubernetes 进行编排。为了简化安装和配置，</font></font><a href="https://helm.sh/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Helm</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">
+为各种部署场景提供了标准模板。提供</font><font style="vertical-align: inherit;">Helm
+</font></font><a href="https://github.com/sitewhere/sitewhere-recipes/tree/master/charts"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">图表</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">
+是为了提供运行完整 SiteWhere 部署所需的微服务和依赖项。基础设施组件包括 Apache Zookeeper 和 Kafka 等技术，MongoDB、InfluxDB 和 Cassandra 等高可用数据库，以及 MQTT 代理等其他支持技术。</font></font></p>
+<div class="markdown-heading" dir="auto"><h2 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">微服务</font></font></h2><a id="user-content-microservices" class="anchor" aria-label="永久链接：微服务" href="#microservices"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere 不是使用单一方法，而是基于作为分布式系统运行的许多微服务。每个微服务都是一个完全独立的实体，具有自己的配置架构、内部组件、数据持久性以及与事件处理管道的交互。 SiteWhere 微服务构建在自定义微服务框架之上，并作为单独的
+</font></font><a href="https://projects.spring.io/spring-boot/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Spring Boot</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">进程运行，每个进程都包含在自己的</font></font><a href="https://www.docker.com/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Docker</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">映像中。</font></font></p>
+<p dir="auto"><a target="_blank" rel="noopener noreferrer nofollow" href="https://camo.githubusercontent.com/81d14ca138d0284618bb7202eb4ef42da39c20360ddaed2f139ebbae8332c1a4/68747470733a2f2f7369746577686572652d7765622e73332e616d617a6f6e6177732e636f6d2f6769746875622d726561646d652f7369746577686572652d6d6963726f73657276696365732e706e67"><img src="https://camo.githubusercontent.com/81d14ca138d0284618bb7202eb4ef42da39c20360ddaed2f139ebbae8332c1a4/68747470733a2f2f7369746577686572652d7765622e73332e616d617a6f6e6177732e636f6d2f6769746875622d726561646d652f7369746577686572652d6d6963726f73657276696365732e706e67" alt="站点建筑" title="SiteWhere 2.0架构" data-canonical-src="https://sitewhere-web.s3.amazonaws.com/github-readme/sitewhere-microservices.png" style="max-width: 100%;"></a></p>
+<div class="markdown-heading" dir="auto"><h3 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">关注点分离</font></font></h3><a id="user-content-separation-of-concerns" class="anchor" aria-label="永久链接：关注点分离" href="#separation-of-concerns"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">将系统逻辑分离为微服务可以更清晰地定义系统各个区域之间的交互。它还允许管道的某些部分正常关闭或发生故障，而不会阻止系统其他部分的运行。跨越许多微服务的事件处理管道由 Kafka 进行缓冲，以便数据处理在保持高吞吐量的同时具有强大的交付保证。</font></font></p>
+<div class="markdown-heading" dir="auto"><h3 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">扩展您的需求。遗漏你不遗漏的东西</font></font></h3><a id="user-content-scale-what-you-need-leave-out-what-you-dont" class="anchor" aria-label="永久链接：扩展您的需求。遗漏你不遗漏的东西" href="#scale-what-you-need-leave-out-what-you-dont"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">微服务架构允许系统的各个功能区域独立扩展或完全排除。在 REST 处理往往成为瓶颈的用例中，可以同时运行多个 REST 微服务来处理负载。相反，可以省略诸如可能不需要的存在管理之类的服务，以便可以将处理能力专用于系统的其他方面。</font></font></p>
+<div class="markdown-heading" dir="auto"><h2 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">实例管理</font></font></h2><a id="user-content-instance-management" class="anchor" aria-label="永久链接：实例管理" href="#instance-management"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"></font><em><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere 支持实例</font></font></em><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">的概念</font><font style="vertical-align: inherit;">，它允许分布式系统充当一个内聚单元，并在全局级别处理某些方面。单个 SiteWhere 实例的所有微服务必须在同一 Kubernetes 基础设施上运行，尽管系统可能分布在数十或数百台计算机上以分配处理负载。</font></font></p>
+<div class="markdown-heading" dir="auto"><h3 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">服务网格与 Istio</font></font></h3><a id="user-content-service-mesh-with-istio" class="anchor" aria-label="永久链接：使用 Istio 的服务网格" href="#service-mesh-with-istio"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere 利用</font></font><a href="https://istio.io/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Istio</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">为系统微服务提供服务网格，允许平台动态扩展，同时还提供对数据路由方式的大量控制。 Istio 允许使用金丝雀测试和故障注入等现代方法来提供更健壮和容错的系统。它还允许对流经组件的数据进行详细监控和跟踪。</font></font></p>
+<div class="markdown-heading" dir="auto"><h3 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">使用 Apache ZooKeeper 进行集中配置管理</font></font></h3><a id="user-content-centralized-configuration-management-with-apache-zookeeper" class="anchor" aria-label="永久链接：使用 Apache ZooKeeper 进行集中配置管理" href="#centralized-configuration-management-with-apache-zookeeper"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere 配置存储在</font></font><a href="https://zookeeper.apache.org/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Apache ZooKeeper</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">中
+，以支持可扩展的外部化配置管理方法。 ZooKeeper 包含一种分层结构，该结构表示一个或多个 SiteWhere 实例以及用于实现它们的所有微服务的配置。复制配置以实现高可用性。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">每个微服务都与 ZooKeeper 直接连接，并使用层次结构来确定其在运行时的配置。微服务侦听配置数据的更改并对更新做出动态反应。微服务中不会本地存储任何配置，这可以防止在系统配置更新时保持服务同步的问题。</font></font></p>
+<div class="markdown-heading" dir="auto"><h3 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Rook.io 的分布式存储</font></font></h3><a id="user-content-distributed-storage-with-rookio" class="anchor" aria-label="永久链接：Rook.io 的分布式存储" href="#distributed-storage-with-rookio"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">由于 Zookeeper、Kafka 和各种数据库等许多系统组件都需要访问持久存储，因此 SiteWhere 使用
+Kubernetes 中的</font></font><a href="https://rook.io/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Rook.io</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">来提供分布式、复制的块存储，该存储能够适应硬件故障，同时仍然提供良好的性能特征。随着存储和吞吐量需求随着时间的推移而增加，可以动态地提供新的存储设备。</font><font style="vertical-align: inherit;">Rook.io 使用的</font><font style="vertical-align: inherit;">底层</font></font><a href="https://ceph.com/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Ceph架构可以处理</font></font></a><font style="vertical-align: inherit;"></font><em><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">EB 级</font></font></em><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">数据，同时允许数据在节点、机架甚至数据中心级别的故障中具有弹性。</font></font></p>
+<div class="markdown-heading" dir="auto"><h2 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">高性能数据处理管道</font></font></h2><a id="user-content-high-performance-data-processing-pipeline" class="anchor" aria-label="永久链接：高性能数据处理管道" href="#high-performance-data-processing-pipeline"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere 中的事件处理管道使用</font></font><a href="https://kafka.apache.org/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Apache Kafka</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">
+提供弹性、高性能的机制来逐步处理设备事件数据。微服务可以插入事件处理管道中的关键点，从众所周知的入站主题读取数据，处理数据，然后将数据发送到众所周知的出站主题。对管道中任何点的数据感兴趣的外部实体可以充当 SiteWhere 主题的使用者，以便在数据在系统中移动时使用数据。</font></font></p>
+<div class="markdown-heading" dir="auto"><h3 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">完全异步管道处理</font></font></h3><a id="user-content-fully-asynchronous-pipeline-processing" class="anchor" aria-label="永久链接：完全异步管道处理" href="#fully-asynchronous-pipeline-processing"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere 事件处理管道利用 Kafka 的消息传递结构来允许异步处理设备事件数据。如果微服务关闭并且没有其他副本可用于处理负载。数据将排队，直到副本启动并再次开始处理。这可以保证数据不会丢失，因为数据始终由 Kafka 的高性能存储支持。 SiteWhere 微服务利用 Kafka 的消费者组概念在多个消费者之间分配负载并相应地扩展处理。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">使用 Kafka 还具有 SiteWhere 所利用的其他优势。由于分布式日志中的所有数据都存储在磁盘上，因此可以根据先前收集的数据“重播”事件流。这对于调试处理逻辑或系统负载测试等方面非常有价值。</font></font></p>
+<div class="markdown-heading" dir="auto"><h2 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">微服务之间的API连接</font></font></h2><a id="user-content-api-connectivity-between-microservices" class="anchor" aria-label="永久链接：微服务之间的 API 连接" href="#api-connectivity-between-microservices"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">虽然设备事件数据通常在 Kafka 主题上从一个微服务到另一个微服务的管道中流动，但也存在需要在微服务之间实时发生的 API 操作。例如，设备管理和事件管理功能包含在它们自己的微服务中，但系统的许多其他组件都需要这些功能。许多 SiteWhere 微服务提供可由其他微服务访问的 API，以支持存储持久数据或启动特定于微服务的服务等方面。</font></font></p>
+<div class="markdown-heading" dir="auto"><h3 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">使用 gRPC 提高性能</font></font></h3><a id="user-content-using-grpc-for-a-performance-boost" class="anchor" aria-label="永久链接：使用 gRPC 提高性能" href="#using-grpc-for-a-performance-boost"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"></font><a href="https://grpc.io/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere 使用gRPC</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">在需要相互通信的微服务之间建立长期连接，</font><font style="vertical-align: inherit;">而不是仅仅使用基于 HTTP 1.x 的 REST 服务（这种服务往往会产生大量连接开销） 。</font><font style="vertical-align: inherit;">由于 gRPC 使用持久的 HTTP2 连接，因此交互的开销大大减少，从而允许解耦而不会造成显着的性能损失。 Istio 还允许 gRPC 连接在微服务的多个副本之间进行复用，以扩展处理并提供冗余。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">整个 SiteWhere 数据模型已以
+</font></font><a href="https://developers.google.com/protocol-buffers/" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">Google Protocol Buffers</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">格式捕获，以便可以在 GRPC 服务中使用。所有 SiteWhere API 也直接作为 gRPC 服务公开，从而允许对所有 API 函数进行高性能、低延迟的访问。 REST API 仍然可以通过 Web/REST 微服务（充当 API 网关）使用，但它们使用底层的 gRPC API 来提供一致的数据访问方法。</font></font></p>
+<div class="markdown-heading" dir="auto"><h2 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">多租户</font></font></h2><a id="user-content-multitenancy" class="anchor" aria-label="永久链接：多租户" href="#multitenancy"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere 专为大型 IoT 项目而设计，该项目可能涉及许多系统租户共享单个 SiteWhere 实例。与大多数物联网平台相比，SiteWhere 的一个关键区别在于每个租户都独立于其他租户运行。默认情况下，租户不共享数据库资源或管道处理，并且具有完全独立的配置生命周期。通过这种方法，每个租户都可以使用自己的数据库技术、外部集成和其他配置选项。租户的部分处理管道可以重新配置/重新启动，而不会对其他租户造成中断。</font></font></p>
+<div class="markdown-heading" dir="auto"><h3 tabindex="-1" class="heading-element" dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">数据隐私</font></font></h3><a id="user-content-data-privacy" class="anchor" aria-label="永久链接：数据隐私" href="#data-privacy"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere 处理多租户方式的一个重要结果是每个租户的数据与其他租户的数据是分开的。大多数提供多租户的平台都会将所有租户的数据存储在共享表中，仅通过租户 ID 进行区分。共享方法可能会导致一个租户的数据损坏另一个租户的数据，这在许多物联网部署中是不可接受的风险。此外，每个租户都有自己的处理管道，因此传输中的数据也永远不会混合。</font></font></p>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">为租户提供专用资源在内存和处理资源方面可能会很昂贵，因此 SiteWhere 还提供了</font><font style="vertical-align: inherit;">每个租户内的</font></font><em><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">客户</font></font></em><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">概念。客户允许在租户内区分数据，但无需单独的专用数据库和管道。在可接受共置数据的情况下，租户可以拥有任意数量的客户，这些客户共享相同的数据库和处理管道。这在安全性和可扩展性方面实现了两全其美。</font></font></p>
+<hr>
+<p dir="auto"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">版权所有 (c) 2009-2019 </font></font><a href="http://www.sitewhere.com" rel="nofollow"><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">SiteWhere LLC</font></font></a><font style="vertical-align: inherit;"><font style="vertical-align: inherit;">。版权所有。</font></font></p>
+</article></div>
